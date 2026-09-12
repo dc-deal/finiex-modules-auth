@@ -1,0 +1,27 @@
+# Vulture configuration — dead code across module boundaries, the backlog tier, never a gate.
+#
+# Taken from FiniexTestingIDE's configuration. Run it from the repo root, AFTER ruff:
+#
+#     python -m vulture --config vulture.toml
+#
+# ⚠️ This is a library. Its public functions are called by the CONSUMING apps, never from inside
+#    this repository, so an unused-looking public name here is usually the API, not dead code.
+#    Triage by hand; delete nothing on vulture's word alone.
+#
+# What is ignored below is only what a framework calls along a path vulture cannot follow.
+
+[tool.vulture]
+paths = ["finiex_auth", "tests"]
+exclude = ["*/__pycache__"]
+min_confidence = 60
+
+# Called by a framework, never by name:
+#   @pytest.fixture             collected by pytest
+#   @router.* / @app.*          FastAPI routing and exception handlers (the tests build small apps)
+#   @field_validator            Pydantic
+ignore_decorators = ["@pytest.fixture", "@router.*", "@app.*", "@field_validator"]
+
+# Names a framework reads off a class or dictates in a signature:
+#   GRANT_SURFACES              read by the validator from the consuming app's subclass
+#   __pydantic_init_subclass__  Pydantic's class-creation hook
+ignore_names = ["GRANT_SURFACES", "__pydantic_init_subclass__"]

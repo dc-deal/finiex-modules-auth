@@ -1,0 +1,32 @@
+# Ruff configuration — the Finiex conventions, not ruff's defaults.
+#
+# ⚠️ Never run ruff bare against this repository. Its default quote style is DOUBLE, the exact
+# opposite of the single-quote rule both consuming projects follow. Run it from the repo root, so
+# this file is the one it reads.
+#
+# Taken from FiniexTestingIDE's configuration, with one difference: there, import order (I001) and
+# quote style (Q000) are release-time sweeps because a large codebase carried a backlog of both.
+# This repository starts with none, so both gate from the first commit — a rule is cheapest on the
+# day nothing violates it yet.
+
+line-length = 100
+target-version = "py312"      # the floor; ruff also flags syntax newer than it
+
+exclude = ["**/__pycache__"]
+
+[format]
+quote-style = "single"
+
+[lint]
+#   F401  unused import                 F541  f-string without placeholders
+#   F811  redefinition of unused name   F821  undefined name (the hard gate)
+#   F841  assigned but never used       I001  unsorted imports (stdlib → third party → project)
+#   Q000  bad quotes (single for literals; double only to avoid escaping, and for docstrings)
+select = ["F401", "F541", "F811", "F821", "F841", "I001", "Q000"]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+docstring-quotes = "double"
+
+[lint.isort]
+known-first-party = ["finiex_auth"]
