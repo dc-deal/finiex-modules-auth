@@ -80,10 +80,15 @@ def test_no_identity_route_is_ungated() -> None:
 
 ## Versions and changes
 
-Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.1.0`. For development,
+Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.1.1`. For development,
 `pip install -e` a checkout. Semver: a breaking change is announced to both consumers before either
 raises its pin, and **whoever raises a pin runs their full suite and states the pass count.** An
 editable install is the one state no pin watches, so each app reports the installed version and
 whether it is editable alongside its build information.
 
 Python ≥ 3.12, tested on 3.12 and 3.14. Rules for this repository: [RULES.md](RULES.md).
+
+## Licence
+
+MIT for the code, from `v0.1.1` on (`v0.1.0` shipped without a licence — pin `v0.1.1`). The
+**Finiex™** name is not covered by the licence; see the notice in [LICENSE](LICENSE).
