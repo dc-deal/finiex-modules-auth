@@ -80,7 +80,7 @@ def test_no_identity_route_is_ungated() -> None:
 
 ## Versions and changes
 
-Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-auth.git@v0.1.0`. For development,
+Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.1.0`. For development,
 `pip install -e` a checkout. Semver: a breaking change is announced to both consumers before either
 raises its pin, and **whoever raises a pin runs their full suite and states the pass count.** An
 editable install is the one state no pin watches, so each app reports the installed version and
