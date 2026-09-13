@@ -39,17 +39,19 @@ def build_bearer_dependency(registry: TokenRegistry,
         consumer = (registry.verify(presented.strip())
                     if scheme.lower() == 'bearer' and presented.strip() else None)
         if consumer is None:
+            client = client_key(request)
             if limiter is not None:
-                key = client_key(request.headers.get('x-forwarded-for'),
-                                 request.client.host if request.client else None)
-                if not limiter.allow(key):
+                if not limiter.allow(client):
                     # Deliberately 429 rather than another 401: the caller has stopped being a
                     # failed login and started being traffic, and an operator reading the log
                     # should see the difference.
                     raise error_factory(429, 'rate_limited', 'Too many attempts', None)
             # The path is logged, the credential never — not even truncated. A prefix in a log
-            # file is a prefix an attacker with the log file no longer has to guess.
-            logger.warning('[AUTH] rejected %s %s', request.method, request.url.path)
+            # file is a prefix an attacker with the log file no longer has to guess. The client
+            # address is what makes the line actionable: which caller keeps failing, and — behind
+            # a proxy — proof that the originating client arrives rather than the proxy itself.
+            logger.warning('[AUTH] rejected %s %s from %s',
+                           request.method, request.url.path, client)
             # `WWW-Authenticate` is what makes the 401 well-formed: it tells a conforming client
             # which scheme to retry with, and lets it tell a dead credential from a transport fault.
             raise error_factory(401, 'unauthenticated', _DENIED, {'WWW-Authenticate': 'Bearer'})

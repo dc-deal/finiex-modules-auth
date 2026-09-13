@@ -1,7 +1,7 @@
 """Per-client request throttling for a FastAPI surface."""
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Tuple
 
 from fastapi import Request
 
@@ -47,25 +47,22 @@ class RateLimiter:
             return True
 
 
-def client_key(forwarded_for: Optional[str], peer: Optional[str]) -> str:
-    """The identity a bucket is keyed on: the originating client, not the proxy.
+def client_key(request: Request) -> str:
+    """The identity a bucket is keyed on: the address of the connecting client.
 
-    Behind a reverse proxy every request arrives from `127.0.0.1`, so keying on the peer address
-    would put every caller in the world into **one** bucket — a global limit wearing the costume of a
-    per-client one, which fails exactly when several consumers are active. So the first entry of
-    `X-Forwarded-For` wins.
+    **Never read from `X-Forwarded-For`.** Every caller can write that header, so a key taken from
+    it hands a guesser a fresh bucket per attempt — vary the value, and the failed-attempt limit
+    never fires. Whether the header may be believed depends on the one fact this package does not
+    have: which peer is the trusted proxy. The ASGI server has it. uvicorn applies the header only
+    when the connection comes from an address in `--forwarded-allow-ips` (default `127.0.0.1`),
+    takes the rightmost entry that is not itself trusted, and rewrites `request.client` to it.
 
-    **This is a trust decision the consuming app owns.** The header is spoofable by anyone who can
-    reach the app directly, so it is trustworthy only where the only route in is a proxy that sets
-    it — FiniexRAGEngine binds loopback behind Caddy. An app reachable without such a proxy lets a
-    caller evade the limit by varying the header. On a loopback-only port that is the local machine
-    evading itself; on anything wider it is a real gap, and the bearer token remains the gate.
+    So behind a proxy on the same machine this is already the originating client, and on a directly
+    published port it is the connection's own peer. A proxy connecting from another address is
+    declared in the server's `--forwarded-allow-ips`; left undeclared, every caller shares the
+    proxy's single bucket — a global limit wearing the costume of a per-client one.
     """
-    if forwarded_for:
-        first = forwarded_for.split(',')[0].strip()
-        if first:
-            return first
-    return peer or 'unknown'
+    return request.client.host if request.client else 'unknown'
 
 
 def build_rate_limit_dependency(limiter: RateLimiter,
@@ -79,9 +76,7 @@ def build_rate_limit_dependency(limiter: RateLimiter,
     """
 
     def enforce_rate_limit(request: Request) -> None:
-        key = client_key(request.headers.get('x-forwarded-for'),
-                         request.client.host if request.client else None)
-        if not limiter.allow(key):
+        if not limiter.allow(client_key(request)):
             # `Retry-After` in seconds: a conforming client backs off on its own instead of
             # hammering a closed door, which is the behaviour the limit exists to produce.
             raise error_factory(429, 'rate_limited', 'Too many requests', {'Retry-After': '60'})

@@ -13,7 +13,8 @@ stops being updated.
 - **Digests only.** The registry holds SHA-256 digests, never tokens, and verifies with
   `hmac.compare_digest` across every entry without early exit.
 - **A kill switch** (`active: false`) and a `note` saying who holds each token.
-- **Failed-attempt throttling** per client; a valid call is never throttled.
+- **Failed-attempt throttling** per client; a valid call is never throttled. Each rejected token is
+  logged with method, path and client address — never the credential.
 - **Redaction** of credential shapes in text a service publishes (`redaction.redact`).
 - **The answering-file guard** (`credential_guard`) and `ResolvedCredential`: refuse a credential
   read from the tracked placeholder, and log which file supplied one without logging the value.
@@ -72,15 +73,18 @@ def test_no_identity_route_is_ungated() -> None:
   overlay config, a credentials cascade or an environment variable — is your app's code.
 - **It never chooses an environment variable name.** `parse_token_pairs(raw, env_var)` requires
   one. Two services reading the same name would accept each other's tokens.
-- **It does not decide whether to trust `X-Forwarded-For`.** `client_key` keys the limiter on it,
-  which is correct behind a proxy that sets it and spoofable anywhere a client can reach the app
-  directly. That is your deployment's decision; the bearer token stays the gate either way.
+- **It never reads `X-Forwarded-For`.** The limiter keys on `request.client.host`, the address
+  your ASGI server resolved. Every caller can write that header, so a key read from it would give a
+  guesser a fresh bucket per attempt. uvicorn applies the header only when the connection comes
+  from a trusted proxy (`--forwarded-allow-ips`, default `127.0.0.1`): behind a proxy on the same
+  machine the key is the originating client, on a directly published port it is the connection's
+  peer. A proxy on another address is declared in the server, never trusted here.
 - **It does not refuse an exposed, unauthenticated bind.** That boot check belongs in your app,
   which knows its bind address.
 
 ## Versions and changes
 
-Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.1.1`. For development,
+Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.2.0`. For development,
 `pip install -e` a checkout. Semver: a breaking change is announced to both consumers before either
 raises its pin, and **whoever raises a pin runs their full suite and states the pass count.** An
 editable install is the one state no pin watches, so each app reports the installed version and
@@ -90,5 +94,5 @@ Python ≥ 3.12, tested on 3.12 and 3.14. Rules for this repository: [RULES.md](
 
 ## Licence
 
-MIT for the code, from `v0.1.1` on (`v0.1.0` shipped without a licence — pin `v0.1.1`). The
+MIT for the code, from `v0.1.1` on (`v0.1.0` shipped without a licence — never pin it). The
 **Finiex™** name is not covered by the licence; see the notice in [LICENSE](LICENSE).

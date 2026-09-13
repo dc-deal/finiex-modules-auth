@@ -12,7 +12,10 @@
 line-length = 100
 target-version = "py312"      # the floor; ruff also flags syntax newer than it
 
-exclude = ["**/__pycache__"]
+# `extend-exclude`, never `exclude`: `exclude` REPLACES ruff's default list (.git, .venv, venv,
+# site-packages, build, dist, …), and a root run then walks any virtualenv inside the checkout.
+# Virtualenvs under other names (`.venv312/`) are covered by `.gitignore`, which ruff honours.
+extend-exclude = ["**/__pycache__"]
 
 [format]
 quote-style = "single"

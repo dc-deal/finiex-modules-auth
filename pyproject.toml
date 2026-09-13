@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "finiex-auth"
-version = "0.1.1"
+version = "0.2.0"
 description = "Bearer tokens with per-name grants for FastAPI services, shared by the Finiex projects."
 readme = "README.md"
 # MIT for the code; the Finiex™ name is not covered — see the notice in LICENSE.

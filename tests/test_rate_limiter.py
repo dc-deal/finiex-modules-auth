@@ -1,10 +1,16 @@
 """The token bucket, its key, and the public dependency."""
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from finiex_auth.rate_limiter import RateLimiter, build_rate_limit_dependency, client_key
+
+
+def _request(peer: Optional[Tuple[str, int]], forwarded_for: Optional[str] = None) -> Request:
+    """A bare request as the ASGI server hands it over: the peer, and whatever headers arrived."""
+    headers = [(b'x-forwarded-for', forwarded_for.encode())] if forwarded_for else []
+    return Request({'type': 'http', 'client': peer, 'headers': headers})
 
 
 def test_the_limiter_admits_the_configured_rate_and_then_refuses() -> None:
@@ -16,15 +22,16 @@ def test_the_limiter_admits_the_configured_rate_and_then_refuses() -> None:
     assert all(RateLimiter(per_minute=0).allow('anyone') for _ in range(100))
 
 
-def test_the_bucket_is_keyed_on_the_originating_client_not_the_proxy() -> None:
-    """Behind a reverse proxy every request arrives from 127.0.0.1.
+def test_the_key_is_the_connection_and_a_forged_header_cannot_change_it() -> None:
+    """Every caller can write `X-Forwarded-For`, so the key is never read from it.
 
-    Keying on the peer would put every caller in the world into one bucket — a global limit wearing
-    the costume of a per-client one, which fails exactly when several consumers are active.
+    A key taken from the header hands a guesser a fresh bucket per attempt. Resolving a trusted
+    proxy's header is the ASGI server's job — uvicorn rewrites the peer before this runs — so even a
+    loopback peer carrying the header is keyed on the peer here.
     """
-    assert client_key('203.0.113.7, 70.41.3.18', '127.0.0.1') == '203.0.113.7'
-    assert client_key(None, '127.0.0.1') == '127.0.0.1'
-    assert client_key('', None) == 'unknown'
+    assert client_key(_request(('198.51.100.4', 50000), '6.6.6.6')) == '198.51.100.4'
+    assert client_key(_request(('127.0.0.1', 50000), '6.6.6.6, 203.0.113.7')) == '127.0.0.1'
+    assert client_key(_request(None)) == 'unknown'
 
 
 def test_the_public_dependency_answers_429_with_retry_after() -> None:

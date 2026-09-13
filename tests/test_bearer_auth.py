@@ -50,7 +50,8 @@ def test_the_credential_never_reaches_a_log_line_or_a_response_body(
     with caplog.at_level(logging.DEBUG):
         accepted = client.get('/protected', headers={'Authorization': f'Bearer {_TOKEN}'})
         rejected = client.get('/protected', headers={'Authorization': f'Bearer {_TOKEN}x'})
-    assert '[AUTH] rejected GET /protected' in caplog.text
+    # The client address makes the line actionable; the TestClient connects as 'testclient'.
+    assert '[AUTH] rejected GET /protected from testclient' in caplog.text
     for text in (caplog.text, accepted.text, rejected.text):
         assert _TOKEN not in text and _TOKEN[:8] not in text
 
@@ -62,6 +63,20 @@ def test_repeated_failures_are_throttled_and_a_valid_caller_never_is() -> None:
     assert codes == [401, 401, 429, 429]
     assert client.get('/protected',
                       headers={'Authorization': f'Bearer {_TOKEN}'}).status_code == 200
+
+
+def test_varying_the_forwarded_header_does_not_escape_the_failed_attempt_limit() -> None:
+    """The attack the key exists to stop: a fresh `X-Forwarded-For` on every guess.
+
+    Were the key read from the header, each attempt below would open its own bucket and no 429
+    would ever come — unlimited guessing behind a limit that looks active.
+    """
+    client = TestClient(_app(limiter=RateLimiter(per_minute=2)))
+    codes: List[int] = []
+    for attempt in range(4):
+        headers = {'Authorization': 'Bearer wrong', 'X-Forwarded-For': f'198.51.100.{attempt}'}
+        codes.append(client.get('/protected', headers=headers).status_code)
+    assert codes == [401, 401, 429, 429]
 
 
 def test_a_consumer_factory_receives_the_headers_a_401_cannot_do_without() -> None:
