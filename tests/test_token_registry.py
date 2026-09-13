@@ -48,6 +48,19 @@ def test_permitted_filters_a_listing_to_what_the_consumer_holds() -> None:
     assert registry.permitted('narrow', 'reports', ['a', 'b', 'c']) == ['a', 'c']
 
 
+def test_holds_any_is_the_floor_of_a_collection_route() -> None:
+    """Anything on the surface admits the caller to the listing; the handler then filters it."""
+    registry = TokenRegistry({'narrow': _Token(token='n', grants=['reports:a']),
+                              'surface': _Token(token='s', grants=['pipelines:*']),
+                              'all': _Token(token='a', grants=['*']),
+                              'none': _Token(token='z', grants=[])})
+    assert registry.holds_any('narrow', 'reports') and not registry.holds_any('narrow', 'pipelines')
+    assert registry.holds_any('surface', 'pipelines') and not registry.holds_any('surface', 'reports')
+    assert registry.holds_any('all', 'reports')
+    assert not registry.holds_any('none', 'reports')
+    assert not registry.holds_any('someone-else', 'reports')
+
+
 def test_an_inactive_token_never_enters_the_registry_and_is_reported() -> None:
     registry = TokenRegistry({'off': _Token(token='t', grants=['*'], active=False),
                               'on': _Token(token='u', grants=['*'], note='Testing IDE')})

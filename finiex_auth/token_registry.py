@@ -113,6 +113,19 @@ class TokenRegistry:
         """The subset of `names` on `surface` this consumer holds — what a listing shows."""
         return [name for name in names if self.may(consumer, f'{surface}:{name}')]
 
+    def holds_any(self, consumer: str, surface: str) -> bool:
+        """Whether `consumer` holds anything at all on `surface` — the floor of a collection route.
+
+        A collection route has no identity to compare, so its handler filters the list to what the
+        caller holds (`permitted`). This is the floor beneath that filter: a consumer entitled to
+        nothing on the surface is refused before the handler runs, so a handler that forgets to
+        filter leaks nothing to them.
+        """
+        held = self._grants.get(consumer)
+        if not held:
+            return False
+        return '*' in held or any(grant.partition(':')[0] == surface for grant in held)
+
     def grants_of(self, consumer: str) -> str:
         """A one-line rendering of what a consumer holds, for the boot report and a 403."""
         held = self._grants.get(consumer)

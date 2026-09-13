@@ -53,6 +53,11 @@ is malformed, and a 429 without `Retry-After` gives a client nothing to back off
 is governed by `{broker}`, so its grants read `bars:kraken_spot`. Where the first parameter is a
 generated id (`/reports/runs/{run_id}/…`), `reports:*` is the realistic grant.
 
+**A route with no path parameter is a collection** (`/reports/runs`). The caller needs at least one
+grant on its surface, or the answer is 403; a caller entitled to some of what it lists reaches the
+handler, which filters the list to what they hold — `tokens.permitted(consumer, 'reports', names)`.
+A route declared on the app itself (`@app.get`) rather than on a router gets neither check.
+
 ## The walk — call it from your suite
 
 Authentication is inherited; **authorization is not.** A router mounted without its
@@ -66,6 +71,22 @@ def test_no_identity_route_is_ungated() -> None:
         app, TestClient(app), {'Authorization': 'Bearer holds-nothing'},
         required=[('/api/v1/brokers/{broker}/symbols/{symbol}/bars', 'get')])
 ```
+
+The walk calls identity routes. Collection routes are covered by the floor above, which works only
+where the router declares its surface — a router carrying nothing but collection routes gives the
+walk nothing to call, so test its refusal yourself.
+
+## Browser clients
+
+- **A CORS preflight is never gated.** The checks are route dependencies, and a preflight `OPTIONS`
+  never reaches a `GET` route: `CORSMiddleware` answers it before routing (without CORS the router
+  answers 405). `allow_headers` must admit `Authorization`; Starlette's `['*']` does.
+- **Expose the two headers the answers depend on.** `WWW-Authenticate` (401) and `Retry-After`
+  (429) are not CORS-safelisted, so a browser hides them from the page unless the app sets
+  `expose_headers=['WWW-Authenticate', 'Retry-After']`.
+- **A token in a browser is not a secret.** Whoever loads the page holds whatever it sends. Keep the
+  token server-side — a proxy that injects it (backend-for-frontend) — and scope any token a browser
+  does hold as though it were public.
 
 ## What it deliberately does not do
 
@@ -81,10 +102,15 @@ def test_no_identity_route_is_ungated() -> None:
   peer. A proxy on another address is declared in the server, never trusted here.
 - **It does not refuse an exposed, unauthenticated bind.** That boot check belongs in your app,
   which knows its bind address.
+- **It does not manage users.** It authorises services — a configured token, a consumer name, its
+  grants. Human accounts (sign-in, password hashing, sessions, reset, a second factor) are a
+  different domain with their own storage: an identity provider over OpenID Connect, or a separate
+  package. The seam is the grant — a user system maps roles onto `<surface>:<name>`, and this
+  package keeps checking them.
 
 ## Versions and changes
 
-Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.2.0`. For development,
+Pin a tag: `finiex-auth @ git+https://github.com/dc-deal/finiex-modules-auth.git@v0.3.0`. For development,
 `pip install -e` a checkout. Semver: a breaking change is announced to both consumers before either
 raises its pin, and **whoever raises a pin runs their full suite and states the pass count.** An
 editable install is the one state no pin watches, so each app reports the installed version and

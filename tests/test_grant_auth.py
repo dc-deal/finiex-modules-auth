@@ -12,7 +12,7 @@ from finiex_auth.token_registry import TokenRegistry
 
 
 class _Token(ConsumerTokenBase):
-    GRANT_SURFACES = ('reports',)
+    GRANT_SURFACES = ('reports', 'bars')
 
 
 class _AppError(Exception):
@@ -26,7 +26,9 @@ class _AppError(Exception):
 
 def _app(error_factory: ErrorFactory = http_exception) -> FastAPI:
     tokens = TokenRegistry({'narrow': _Token(token='n', grants=['reports:source_health']),
-                            'wide': _Token(token='w', grants=['reports:*'])})
+                            'wide': _Token(token='w', grants=['reports:*']),
+                            'elsewhere': _Token(token='e', grants=['bars:mt5']),
+                            'everything': _Token(token='a', grants=['*'])})
 
     def stand_in_bearer(request: Request) -> None:
         # The bearer dependency's contract, reduced: it puts the consumer on request.state.
@@ -80,9 +82,18 @@ def test_a_nested_route_is_governed_by_what_it_belongs_to() -> None:
     assert client.get('/reports/cost/rows/42', headers={'x-consumer': 'narrow'}).status_code == 403
 
 
-def test_a_collection_route_is_filtered_rather_than_gated() -> None:
+def test_a_collection_route_admits_anyone_entitled_to_some_of_what_it_lists() -> None:
+    """Partly entitled reaches the handler, which filters; refusing them would hide what they hold."""
     client = TestClient(_app())
-    assert client.get('/reports', headers={'x-consumer': 'narrow'}).status_code == 200
+    for consumer in ('narrow', 'wide', 'everything'):
+        assert client.get('/reports', headers={'x-consumer': consumer}).status_code == 200, consumer
+
+
+def test_a_collection_route_refuses_a_caller_holding_nothing_on_its_surface() -> None:
+    """The floor beneath the handler's filter: a forgotten filter leaks nothing to this caller."""
+    refused = TestClient(_app()).get('/reports', headers={'x-consumer': 'elsewhere'})
+    assert refused.status_code == 403
+    assert refused.json()['detail'] == "token 'elsewhere' holds nothing on 'reports' · holds: bars:mt5"
 
 
 def test_with_authentication_off_there_is_no_consumer_to_gate() -> None:

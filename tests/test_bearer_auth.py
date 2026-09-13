@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pytest
 from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from finiex_auth.bearer_auth import build_bearer_dependency
@@ -61,8 +62,34 @@ def test_repeated_failures_are_throttled_and_a_valid_caller_never_is() -> None:
     codes = [client.get('/protected', headers={'Authorization': 'Bearer wrong'}).status_code
              for _ in range(4)]
     assert codes == [401, 401, 429, 429]
+    throttled = client.get('/protected', headers={'Authorization': 'Bearer wrong'})
+    assert throttled.headers['retry-after'] == '60'     # a 429 a client can back off on
     assert client.get('/protected',
                       headers={'Authorization': f'Bearer {_TOKEN}'}).status_code == 200
+
+
+def test_a_cors_preflight_never_reaches_the_dependencies() -> None:
+    """A browser's preflight carries no `Authorization` — by specification, not by choice.
+
+    The checks are route dependencies, and an `OPTIONS` never matches a `GET` route: without CORS the
+    router answers 405, with `CORSMiddleware` the middleware answers before routing. The package can
+    therefore never turn a preflight into a 401; and a cross-origin 401 carries the allow-origin
+    header, so the page sees the status rather than an opaque CORS error.
+    """
+    origin = 'http://viewer.example'
+    preflight = {'Origin': origin, 'Access-Control-Request-Method': 'GET',
+                 'Access-Control-Request-Headers': 'authorization'}
+    assert TestClient(_app()).options('/protected', headers=preflight).status_code == 405
+    app = _app()
+    app.add_middleware(CORSMiddleware, allow_origins=[origin], allow_methods=['GET'],
+                       allow_headers=['Authorization'])
+    client = TestClient(app)
+    answered = client.options('/protected', headers=preflight)
+    assert answered.status_code == 200
+    assert answered.headers['access-control-allow-origin'] == origin
+    refused = client.get('/protected', headers={'Origin': origin})
+    assert refused.status_code == 401
+    assert refused.headers['access-control-allow-origin'] == origin
 
 
 def test_varying_the_forwarded_header_does_not_escape_the_failed_attempt_limit() -> None:

@@ -15,9 +15,10 @@ someone remembering a decorator.
 
 So a grant names a **thing**, never an address, and the comparison is exact.
 
-A **collection** route (`/v1/reports`) has no identity segment and is not gated here: it is
-*filtered* in its handler to what the caller holds (`TokenRegistry.permitted`). Gating it would
-answer 403 to a consumer entitled to some of what it lists.
+A **collection** route (`/v1/reports`) has no identity segment, so it is gated at the surface only:
+a caller holding nothing on that surface is refused, and a caller entitled to some of what it lists
+reaches the handler, which *filters* the list to what they hold (`TokenRegistry.permitted`). The
+floor is what makes a forgotten filter harmless to everyone the surface was never granted to.
 
 **The one weakness, stated so it is not inherited silently.** Authentication sits on a shared
 router, so nothing can forget it. The surface is declared per router, so a router mounted without
@@ -68,10 +69,18 @@ def build_grant_dependency(tokens: TokenRegistry,
             return
         if not security_scopes.scopes:
             return
+        surface = security_scopes.scopes[0]
         identity = route_identity(request)
         if identity is None:
+            # A collection route: nothing to compare, so the handler filters the list. The floor
+            # beneath that filter — a caller entitled to nothing on this surface never reaches it.
+            if not tokens.holds_any(consumer, surface):
+                logger.warning('[AUTH] %s denied %s (holds nothing on it)', consumer, surface)
+                raise error_factory(403, 'forbidden',
+                                    f'token {consumer!r} holds nothing on {surface!r} · holds: '
+                                    f'{tokens.grants_of(consumer)}', None)
             return
-        grant = f'{security_scopes.scopes[0]}:{identity}'
+        grant = f'{surface}:{identity}'
         if not tokens.may(consumer, grant):
             logger.warning('[AUTH] %s denied %s', consumer, grant)
             # 403 rather than 404: the thing exists, a partner can read the documentation anyway,

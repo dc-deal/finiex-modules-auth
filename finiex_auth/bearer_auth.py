@@ -44,8 +44,11 @@ def build_bearer_dependency(registry: TokenRegistry,
                 if not limiter.allow(client):
                     # Deliberately 429 rather than another 401: the caller has stopped being a
                     # failed login and started being traffic, and an operator reading the log
-                    # should see the difference.
-                    raise error_factory(429, 'rate_limited', 'Too many attempts', None)
+                    # should see the difference. `Retry-After` is the full window — the figure the
+                    # public limiter sends too — so a conforming client backs off instead of
+                    # spending the next attempt the moment one refills.
+                    raise error_factory(429, 'rate_limited', 'Too many attempts',
+                                        {'Retry-After': '60'})
             # The path is logged, the credential never — not even truncated. A prefix in a log
             # file is a prefix an attacker with the log file no longer has to guess. The client
             # address is what makes the line actionable: which caller keeps failing, and — behind
